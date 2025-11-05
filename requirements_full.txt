@@ -1,0 +1,16 @@
+# Full development/runtime dependencies for the Personalized_memory_assistant project
+# Install with: pip install -r requirements_full.txt
+
+SpeechRecognition
+pydub
+python-dotenv
+chromadb
+sentence-transformers
+pyttsx3
+google-generativeai
+pipwin
+pyaudio
+
+# Note: `torch`, `torchvision`, and `torchaudio` are required by sentence-transformers.
+# Install the correct PyTorch wheel for your machine (CPU vs CUDA) separately.
+# See README.md below for recommended commands on Windows.

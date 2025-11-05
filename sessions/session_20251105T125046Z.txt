@@ -1,0 +1,4 @@
+[2025-11-05T12:51:16.937270+00:00] user: Hi this is Sridhar, which lobe am i in now?
+[2025-11-05T12:51:18.189719+00:00] assistant: Gemini API key not found. Set GOOGLE_API_KEY or VERTEX_API_KEY env var.
+[2025-11-05T12:53:53.339220+00:00] user: Hii, I am Sridhar..
+[2025-11-05T12:53:53.418555+00:00] assistant: Gemini API key not found. Set GOOGLE_API_KEY or VERTEX_API_KEY env var.
