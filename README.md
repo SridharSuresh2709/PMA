@@ -1,4 +1,6 @@
-Personalized_memory_assistant — setup notes for Windows (PowerShell)
+# Personalized Memory Assistant (PMA)
+
+A Personalized Memory Assistant powered by AI - Setup notes for Windows (PowerShell)
 
 These quick steps create a virtual environment, install dependencies, and cover Windows-specific notes (PyAudio and ffmpeg).
 
