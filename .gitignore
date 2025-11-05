@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 .vscode/
 *.pyc
+
+# Large files
+Previous_codes/podcast_summarizer.zip
