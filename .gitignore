@@ -6,3 +6,8 @@ __pycache__/
 
 # Large files
 Previous_codes/podcast_summarizer.zip
+
+# Database files
+chroma_db/
+*.sqlite3
+*.bin

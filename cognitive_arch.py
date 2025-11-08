@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-chat.py
+cognitive_arch.py
 Voice+Text chatbot with brain lobe-inspired multi-collection ChromaDB memory.
-Implements specialized memory collections analogous to brain lobes:
-- executive_memory (Frontal Lobe): Decision, Planning, Reasoning
-- semantic_memory (Temporal Lobe): Facts, Language, Long-term Knowledge
-- context_memory (Parietal Lobe): Spatial, Temporal, Session Context
-- visual_memory (Occipital Lobe): Visual/Multimodal Data
-- affective_memory (Limbic System): Emotional Weight, Importance
-- working_memory (Hippocampus): Short-term buffer for consolidation
+Features:
+- Automatic topic name generation from first user message using Gemini
+- Brain lobe memory collections (executive, semantic, context, visual, affective)
+- Working memory buffer with auto-consolidation
 """
 
 import os
@@ -20,6 +17,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone
 from collections import deque
 from typing import Dict, List, Optional
+import re
 
 # --------- Configuration ---------
 SESSIONS_DIR = Path("sessions")
@@ -29,8 +27,7 @@ TOP_K = 3  # Per collection
 GEMINI_MODEL = "gemini-2.0-flash"
 WORKING_MEMORY_SIZE = 10  # Number of items before consolidation
 
-# Load .env from the project root (next to this file). This makes local
-# environment variables like GEMINI_API_KEY available during development.
+# Load environment variables
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 import chromadb
@@ -107,13 +104,13 @@ class BrainLobeMemoryStore:
         
         # Check for executive/planning keywords
         executive_keywords = ["plan", "decide", "should", "will", "goal", "strategy", 
-                            "think", "reason", "next", "step"]
+                            "think", "reason", "next", "step", "project", "work on"]
         if any(kw in text_lower for kw in executive_keywords):
             return "executive_memory"
         
         # Check for factual/semantic keywords
         semantic_keywords = ["is", "are", "means", "definition", "fact", "what", 
-                           "who", "where", "when", "explain"]
+                           "who", "where", "when", "explain", "called", "system"]
         if any(kw in text_lower for kw in semantic_keywords):
             return "semantic_memory"
         
@@ -284,6 +281,7 @@ class BrainLobeMemoryStore:
 
 # ----------------- Gemini client wrapper -----------------
 def generate_with_gemini(prompt, model=GEMINI_MODEL, temperature=0.7, max_tokens=512):
+    """Generate response using Google Gemini."""
     try:
         import google.generativeai as genai
     except Exception:
@@ -311,8 +309,52 @@ def generate_with_gemini(prompt, model=GEMINI_MODEL, temperature=0.7, max_tokens
         return f"Gemini call failed: {e}"
 
 
+def generate_topic_name(first_message: str) -> str:
+    """
+    Generate a concise topic name from the user's first message using Gemini.
+    Returns a short, descriptive filename-safe topic name.
+    """
+    prompt = f"""Given this first message from a user, generate a concise topic name (2-4 words max) that captures the main subject.
+
+User's first message: "{first_message}"
+
+Requirements:
+- 2-4 words maximum
+- Lowercase with underscores instead of spaces
+- No special characters except underscores
+- Descriptive and meaningful
+- Examples: "project_planning", "python_learning", "memory_assistant", "travel_ideas"
+
+Respond ONLY with the topic name, nothing else."""
+
+    try:
+        topic = generate_with_gemini(prompt, temperature=0.3, max_tokens=20)
+        
+        # Clean up the response
+        topic = topic.strip().lower()
+        # Remove quotes if present
+        topic = topic.strip('"\'')
+        # Replace spaces with underscores
+        topic = re.sub(r'[\s\-]+', '_', topic)
+        # Remove any non-alphanumeric characters except underscores
+        topic = re.sub(r'[^\w_]', '', topic)
+        # Limit length
+        topic = topic[:50]
+        
+        # Fallback if generation failed
+        if not topic or len(topic) < 3:
+            topic = "conversation"
+        
+        return topic
+        
+    except Exception as e:
+        print(f"⚠️  Error generating topic name: {e}")
+        return "conversation"
+
+
 # ----------------- Voice & TTS helpers -----------------
 def listen_from_mic(timeout=5, phrase_time_limit=10):
+    """Listen to microphone input and convert to text."""
     if sr is None:
         raise RuntimeError("SpeechRecognition not installed. pip install SpeechRecognition and pyaudio.")
     r = sr.Recognizer()
@@ -325,6 +367,7 @@ def listen_from_mic(timeout=5, phrase_time_limit=10):
         raise RuntimeError(f"Speech recognition failed: {e}")
 
 def speak_text(text):
+    """Convert text to speech."""
     if pyttsx3 is None:
         print("(TTS not available) " + text)
         return
@@ -336,17 +379,134 @@ def speak_text(text):
         print("(TTS error)", e)
 
 # ----------------- Session file helpers -----------------
-def new_session_file(prefix="session"):
+def new_session_file(topic_name: str = None) -> Path:
+    """
+    Create a new session file with optional topic name.
+    If topic_name is provided, format: topic_YYYYMMDDTHHMMSSZ.txt
+    Otherwise: session_YYYYMMDDTHHMMSSZ.txt
+    """
     SESSIONS_DIR.mkdir(exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    fname = SESSIONS_DIR / f"{prefix}_{ts}.txt"
+    
+    if topic_name:
+        fname = SESSIONS_DIR / f"{topic_name}_{ts}.txt"
+    else:
+        fname = SESSIONS_DIR / f"session_{ts}.txt"
+    
     fname.touch(exist_ok=False)
     return fname
 
 def append_to_session(file_path: Path, role: str, text: str):
+    """Append a message to the session file."""
     ts = datetime.now(timezone.utc).isoformat()
     line = f"[{ts}] {role}: {text}\n"
     file_path.open("a", encoding="utf-8").write(line)
+
+# ----------------- Inspection helpers -----------------
+def inspect_lobes(store: BrainLobeMemoryStore):
+    """Display overview of all brain lobe collections."""
+    print("\n" + "=" * 70)
+    print("🔍 BRAIN LOBE INSPECTION")
+    print("=" * 70)
+    
+    lobe_icons = {
+        "executive_memory": "🎯",
+        "semantic_memory": "📚",
+        "context_memory": "🌐",
+        "visual_memory": "👁️",
+        "affective_memory": "❤️",
+    }
+    
+    for lobe_name, collection in store.collections.items():
+        icon = lobe_icons.get(lobe_name, "📦")
+        count = collection.count()
+        
+        print(f"\n{icon} {lobe_name.upper().replace('_', ' ')}")
+        print(f"   Items: {count}")
+        
+        if count > 0:
+            # Get a few sample items
+            results = collection.get(limit=3)
+            docs = results.get('documents', [])
+            
+            print(f"   Recent samples:")
+            for i, doc in enumerate(docs[:3], 1):
+                preview = doc[:80] + "..." if len(doc) > 80 else doc
+                print(f"     {i}. {preview}")
+    
+    print("\n" + "=" * 70)
+
+def show_lobe_statistics(store: BrainLobeMemoryStore):
+    """Show statistics about memory distribution."""
+    print("\n" + "=" * 70)
+    print("📊 MEMORY DISTRIBUTION STATISTICS")
+    print("=" * 70)
+    
+    stats = []
+    total = 0
+    
+    lobe_names = {
+        "executive_memory": "🎯 Executive",
+        "semantic_memory": "📚 Semantic",
+        "context_memory": "🌐 Context",
+        "visual_memory": "👁️ Visual",
+        "affective_memory": "❤️ Affective",
+    }
+    
+    for lobe_name, collection in store.collections.items():
+        count = collection.count()
+        stats.append((lobe_names.get(lobe_name, lobe_name), count))
+        total += count
+    
+    print(f"\n📦 Total Memories: {total}")
+    print(f"🧠 Working Memory Buffer: {len(store.working_memory)}/{WORKING_MEMORY_SIZE}")
+    print()
+    
+    if total > 0:
+        stats.sort(key=lambda x: x[1], reverse=True)
+        max_count = max(s[1] for s in stats) if stats else 1
+        
+        for name, count in stats:
+            percentage = (count / total * 100) if total > 0 else 0
+            bar_length = int(count / max_count * 40) if max_count > 0 else 0
+            bar = "█" * bar_length
+            
+            print(f"{name:15} │{bar:42}│ {count:4} ({percentage:5.1f}%)")
+    else:
+        print("⚠️  No memories stored in long-term collections yet")
+    
+    print("\n" + "=" * 70)
+
+def search_lobes(store: BrainLobeMemoryStore, query: str):
+    """Search across all lobes and display results."""
+    print("\n" + "=" * 70)
+    print(f"🔎 SEARCHING: '{query}'")
+    print("=" * 70)
+    
+    results = store.query_all_lobes(query, top_k_per_lobe=2)
+    
+    if not results:
+        print("\n⚠️  No results found")
+        return
+    
+    lobe_icons = {
+        "executive_memory": "🎯",
+        "semantic_memory": "📚",
+        "context_memory": "🌐",
+        "visual_memory": "👁️",
+        "affective_memory": "❤️",
+    }
+    
+    for lobe_name, hits in results.items():
+        icon = lobe_icons.get(lobe_name, "📦")
+        print(f"\n{icon} {lobe_name.upper().replace('_', ' ')}")
+        
+        for i, hit in enumerate(hits, 1):
+            relevance = 1 - hit['score']
+            text_preview = hit['text'][:100] + "..." if len(hit['text']) > 100 else hit['text']
+            print(f"   {i}. [{relevance:.2%} match] {text_preview}")
+    
+    print("\n" + "=" * 70)
 
 # ----------------- Main Loop -----------------
 def main():
@@ -363,9 +523,18 @@ def main():
     print("=" * 70)
     
     store = BrainLobeMemoryStore()
-    session_file = new_session_file()
-    print(f"\n📄 Session file: {session_file}")
-    print("\nReady! Commands: 'voice' (speak), 'consolidate' (force consolidation), 'exit' (quit)")
+    
+    # Session file will be created after first message with auto-generated topic
+    session_file = None
+    first_message = True
+    
+    print("\nReady! Commands:")
+    print("  • 'voice' - Use voice input")
+    print("  • 'inspect' - View all brain lobes")
+    print("  • 'stats' - Show memory statistics")
+    print("  • 'search: <query>' - Search across lobes")
+    print("  • 'consolidate' - Force memory consolidation")
+    print("  • 'exit' - Quit")
     print("-" * 70)
 
     while True:
@@ -382,6 +551,19 @@ def main():
         if user_input.lower() == "consolidate":
             store.consolidate_working_memory()
             continue
+        
+        if user_input.lower() == "inspect":
+            inspect_lobes(store)
+            continue
+        
+        if user_input.lower() == "stats":
+            show_lobe_statistics(store)
+            continue
+        
+        if user_input.lower().startswith("search:"):
+            query = user_input[7:].strip()
+            search_lobes(store, query)
+            continue
 
         if user_input.lower() == "voice":
             try:
@@ -392,6 +574,15 @@ def main():
                 continue
         else:
             user_text = user_input
+
+        # Generate topic name and create session file on first message
+        if first_message:
+            print("🤔 Generating topic name from your message...")
+            topic_name = generate_topic_name(user_text)
+            session_file = new_session_file(topic_name)
+            print(f"📝 Topic: '{topic_name}'")
+            print(f"📄 Session file: {session_file}")
+            first_message = False
 
         # Save to session file
         append_to_session(session_file, "user", user_text)
